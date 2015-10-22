@@ -35,6 +35,7 @@ from .exceptions import (KafkaException, PartitionOwnedError,
                          ConsumerStoppedException, ZookeeperConnectionLost)
 from .simpleconsumer import SimpleConsumer
 from .utils.compat import range, get_bytes, itervalues
+from .utils.common import unregister_cleanup_func, register_cleanup_func
 
 
 log = logging.getLogger(__name__)
@@ -189,6 +190,13 @@ class BalancedConsumer():
         if auto_start is True:
             self.start()
 
+        def cleanup(obj):
+            obj.stop()
+        self._cleanup_func = cleanup
+
+        # Register a cleanup handler
+        register_cleanup_func(self._cleanup_func, self)
+
     def __repr__(self):
         return "<{module}.{name} at {id_} (consumer_group={group})>".format(
             module=self.__class__.__module__,
@@ -269,6 +277,11 @@ class BalancedConsumer():
             # additionally we'd want to remove watches here, but there are no
             # facilities for that in ChildrenWatch - as a workaround we check
             # self._running in the watcher callbacks (see further down)
+
+        # Unregister the cleanup handler
+        unregister_cleanup_func(self._cleanup_func, self)
+
+        del self._cleanup_func
 
     def _setup_zookeeper(self, zookeeper_connect, timeout):
         """Open a connection to a ZooKeeper host.

@@ -39,6 +39,7 @@ from .exceptions import (
 from .partitioners import random_partitioner
 from .protocol import Message, ProduceRequest
 from .utils.compat import iteritems, range, itervalues
+from .utils.common import unregister_cleanup_func, register_cleanup_func
 
 log = logging.getLogger(__name__)
 
@@ -137,6 +138,14 @@ class Producer(object):
         self._update_lock = self._cluster.handler.Lock()
         self.start()
 
+        def cleanup(obj):
+            if obj._running:
+                obj.stop()
+        self._cleanup_func = cleanup
+
+        # Register a cleanup handler
+        register_cleanup_func(self._cleanup_func, self)
+
     def _raise_worker_exceptions(self):
         """Raises exceptions encountered on worker threads"""
         if self._worker_exception is not None:
@@ -217,6 +226,10 @@ class Producer(object):
         if self._owned_brokers is not None:
             for owned_broker in self._owned_brokers.values():
                 owned_broker.stop()
+        # Unregister the cleanup handler
+        unregister_cleanup_func(self._cleanup_func, self)
+
+        del self._cleanup_func
 
     def produce(self, message, partition_key=None):
         """Produce a message.

@@ -31,6 +31,13 @@ def buildMockConsumer(num_partitions=10, num_participants=1, timeout=2000):
                             consumer_timeout_ms=timeout), topic
 
 
+class MockAtexit(mock.MagicMock):
+    _exithandlers = []
+
+    def unregister(self, func):
+        raise ValueError
+
+
 class TestBalancedConsumer(unittest2.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -53,6 +60,25 @@ class TestBalancedConsumer(unittest2.TestCase):
         consumer, _ = buildMockConsumer(timeout=-1)
         consumer._setup_internal_consumer(start=False)
         consumer._consumer._partitions_by_id = {1: "dummy"}
+
+        consumer.stop()
+        self.assertIsNone(consumer.consume())
+
+    def test_cleanup_stop_is_called_on_not_stopped_object(self):
+        """Test that the cleanup() method flushes the queue properly"""
+        consumer, _ = buildMockConsumer(timeout=-1)
+        consumer._setup_internal_consumer(start=False)
+
+        # simulates a program termination
+        consumer._cleanup_func(consumer)
+
+        self.assertIsNone(consumer.consume())
+
+    @mock.patch('pykafka.utils.common.atexit', new=MockAtexit())
+    def test_failing_to_remove_cleanup_func(self):
+        """Test ValueError is ignored """
+        consumer, _ = buildMockConsumer(timeout=-1)
+        consumer._setup_internal_consumer(start=False)
 
         consumer.stop()
         self.assertIsNone(consumer.consume())
